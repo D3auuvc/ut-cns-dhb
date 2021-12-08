@@ -127,3 +127,13 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+
+# row data
+row_data/
+
+# DecMeg2014_sample
+DecMeg2014_sample/
+
+# venv
+cns_venv/
