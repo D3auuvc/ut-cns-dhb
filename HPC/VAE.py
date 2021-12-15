@@ -1,9 +1,12 @@
-import numpy as np
-from torchsummary import summary
-import pickle
-import torch
-import datetime
-from torch.utils.tensorboard import SummaryWriter
+
+def weights_init(m):
+    if isinstance(m, torch.nn.Linear):
+        torch.nn.init.xavier_uniform_(m.weight)
+        #m.bias.data.fill_(0.01)
+    if isinstance(m, torch.nn.Conv2d):
+        torch.nn.init.xavier_uniform_(m.weight)
+        #m.bias.data.fill_(0.01)
+        
 
 class VAE(torch.nn.Module):
     def __init__(self,k_size,channel):
@@ -13,7 +16,6 @@ class VAE(torch.nn.Module):
             self.device = torch.device('cuda')
         else:
             self.device = torch.device('cpu')
-        
         # input dim 3*102*188 = 57528
         # H = [ (HIn + 2×padding[0]−dilation[0]×(kernel_size[0]−1)−1)/s ] + 1
         #   =    [( 102 + 0 - 1x(2) -1 )/2] + 1 
@@ -28,7 +30,7 @@ class VAE(torch.nn.Module):
         
         self.encoder =  torch.nn.Sequential(
             torch.nn.Conv2d(channel, 64, k_size, stride=1,padding=1),  #  C=64,H=102,W=188
-            torch.nn.Conv2d(64, 64, k_size, stride=1,padding=1),  #  C=64,H=102,W=188
+            #torch.nn.Conv2d(64, 64, k_size, stride=1,padding=1),  #  C=64,H=102,W=188
             self.activation,
             self.maxpool,                                         #  C=64,H=50,W=93
             torch.nn.Conv2d(64, 128, k_size,stride=1,padding=1),   #  C=128,H=50,W=93
@@ -48,7 +50,7 @@ class VAE(torch.nn.Module):
             self.maxpool                                          #  C=512,H=5,W=10 = 25600 - mu C[0:256] , v C[256:512]
         ).to(self.device)
         self.decoder =  torch.nn.Sequential(
-            torch.nn.Conv2d(256, 16, k_size, stride=1,padding=1),  #  C=16,H=5,W=10
+            torch.nn.Conv2d(512, 16, k_size, stride=1,padding=1),  #  C=16,H=5,W=10
             torch.nn.Conv2d(16, 32, k_size, stride=1,padding=1),   #  C=32,H=5,W=10
             torch.nn.ConvTranspose2d(32,32,(3,4),stride=2),        #  C=32,H=11,W=22
             self.activation,
@@ -65,27 +67,24 @@ class VAE(torch.nn.Module):
             torch.nn.ConvTranspose2d(16,3,(4,4),stride=2),          #  C=3,H=102,W=188
             torch.nn.Sigmoid()
         ).to(self.device)
+        self.encoder.apply(weights_init)
+        self.decoder.apply(weights_init)
         
-        self.parameters = set()
-        self.parameters |= set(self.encoder.parameters())
-        self.parameters |= set(self.decoder.parameters())
-        self.optimizer = torch.optim.Adam(self.parameters, lr=0.001)
+       
         
     def reparametrize(self,mu,log_var):
         #Reparametrization Trick to allow gradients to backpropagate from the 
         #stochastic part of the model
         sigma = torch.exp(0.5*log_var)
-        z = torch.randn(mu.size(0),mu.size(1),mu.size(2),mu.size(3),device=self.device)
-        z= z.type_as(mu)
+        z = torch.randn_like(log_var,device=self.device)
+        #z= z.type_as(mu)
         return mu + sigma*z
         
     def forward(self, x):
         out = self.encoder(x)
-        mu = out[:,:256,:,:]
-        v = out[:,256:,:,:]
-        #print(mu)
-        #print(v)
-        out = self.reparametrize(mu,v)
+        #mu = out[:,:,:,0:5]
+        #v =  out[:,:,:,5:10]
+        #out = self.reparametrize(mu,v)
         out = self.decoder(out)
-        #print(mu)
-        return out,mu,v
+        return out
+        
